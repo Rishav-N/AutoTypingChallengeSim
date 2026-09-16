@@ -293,7 +293,7 @@ docker compose exec dev bash
 Note **`dev`**, not `sim`. Everything in the rest of this section runs **inside
 the dev container**.
 
-### 7.2 Check the environment is sourced
+### 7.2 Check the environment
 
 **Run inside the dev container:**
 
@@ -301,28 +301,19 @@ the dev container**.
 which ros2
 ```
 
-**It prints nothing, and that is the expected result** — in this image you source
-the environment yourself, in every shell you open. `docker compose exec` starts
-your shell without running the image's entrypoint, and the entrypoint is what
-does the sourcing.
+Expected: `/opt/ros/jazzy/bin/ros2`. Every shell in the dev container loads ROS 2
+and the `autotype_msgs` message definitions for you, and once you have built
+your own workspace (7.3), every **new** shell loads your packages too.
 
-Do not take `ROS_DISTRO` for a second opinion: the image bakes that variable in,
-so it reads `jazzy` in a shell whose `PATH` has no ROS 2 on it at all. `which
-ros2` is the honest check.
+If it prints nothing, load the environment by hand in that shell:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 source /opt/autotype/install/setup.bash
 ```
 
-`which ros2` now prints `/opt/ros/jazzy/bin/ros2`. The second file is what
-puts the `autotype_msgs` message definitions on your path. After you build
-your own workspace (7.3) add `source /ws/install/setup.bash` as well.
-
-You will open a lot of shells, so put whichever lines you need into
-`/ws/env.sh` and run `source /ws/env.sh` in each new one. Files under `/ws`
-survive `docker compose down`. Nothing else in the container does — not
-`~/.bashrc`, not anything you `pip install`.
+Files under `/ws` survive `docker compose down`. Nothing else in the container
+does, including anything you `pip install`.
 
 ### 7.3 Create, build and run a package
 
@@ -371,6 +362,67 @@ machine — with the group half, `$USER:$USER`, or the numeric group stays.
 
 Open a second shell whenever you want to watch topics while your node runs — just
 `docker compose exec dev bash` again from another terminal.
+
+### 7.4 Developing in VS Code
+
+VS Code can open a window **inside** the dev container, so its editor, terminal
+and Python autocomplete all use the container's ROS 2, OpenCV and message
+packages. Nothing is installed in the container itself.
+
+**Once**, on the computer you will run VS Code on, install
+[VS Code](https://code.visualstudio.com/) (on Ubuntu:
+`sudo snap install code --classic`) and the **Dev Containers** extension. If
+Ubuntu is a VM and you would rather use VS Code on your laptop, also install the
+**Remote - SSH** extension there.
+
+**Each session:**
+
+1. Start the simulator on your Ubuntu machine: `docker compose up -d` (section 5).
+2. VS Code on your laptop with Ubuntu in a VM only: open the Command Palette
+   (Ctrl+Shift+P, or ⇧⌘P on a Mac), run **Remote-SSH: Connect to Host…** and
+   enter `<user>@<vm-ip>`. VS Code on the Ubuntu machine itself: skip this step.
+3. In the Command Palette, run **Dev Containers: Attach to Running Container…**
+   and choose **`/urc-autotype-dev`** — `dev`, not `sim`.
+4. In the new window, **File → Open Folder…** and enter `/ws`.
+5. **Terminal → New Terminal**. It runs inside the dev container with ROS 2
+   already loaded, so `ros2 topic list` shows the simulator's topics.
+
+From that terminal, build and run exactly as in 7.3. Files you save are the same
+files as `member_ws/` on your Ubuntu machine.
+
+**Make it automatic.** While attached, search the Command Palette for
+**Dev Containers: Open Container Configuration File** and set it to:
+
+```json
+{
+  "workspaceFolder": "/ws",
+  "extensions": ["ms-python.python"]
+}
+```
+
+From then on, attaching opens `/ws` and installs the Python extension in the
+container for you.
+
+**Good to know:**
+
+- VS Code attaches as `member`, the container's normal user. Leave it that way:
+  ROS 2 commands run as root inside the dev container stop that container
+  receiving topics until it is recreated.
+- After `docker compose down` and `up`, the next attach is slower while VS Code
+  reinstalls its own server and extensions in the new container. Your files in
+  `/ws` are untouched.
+- If the editor underlines `import rclpy` even though your node runs, create
+  `/ws/.vscode/settings.json`:
+
+  ```json
+  {
+    "python.defaultInterpreterPath": "/usr/bin/python3",
+    "python.analysis.extraPaths": [
+      "/opt/ros/jazzy/lib/python3.12/site-packages",
+      "/opt/autotype/install/autotype_msgs/lib/python3.12/site-packages"
+    ]
+  }
+  ```
 
 ---
 
