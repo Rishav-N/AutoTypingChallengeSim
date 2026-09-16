@@ -42,20 +42,24 @@ changes is the address you use for the dashboard (section 6).
 uname -m
 ```
 
-| result | tarball you need | status |
-|---|---|---|
-| `aarch64` / `arm64` | `urc-autotype-arm64.tar.gz` | **built and verified** |
-| `x86_64` / `amd64` | `urc-autotype-amd64.tar.gz` | **not built yet** |
+| result | tarball you need |
+|---|---|
+| `aarch64` / `arm64` | `urc-autotype-arm64.tar.gz` |
+| `x86_64` / `amd64` | `urc-autotype-amd64.tar.gz` |
 
-Be clear-eyed about this: **only the arm64 images exist today.** If `uname -m`
-says `x86_64`, install Docker (section 3) and then open an issue on the
-repository, or say so in the team chat — the tarballs are built by the
-maintainer from a checkout that carries the site configuration, so nobody can
-produce the amd64 one from the public repository alone.
-
-Do not try to load the arm64 tarball on an x86_64 machine. Docker either refuses
-it (`exec format error`) or falls back to emulation that is far too slow for a
+Both are published. They are not interchangeable: loading the wrong one fails
+with `exec format error`, or falls back to emulation that is far too slow for a
 50 Hz control loop.
+
+The download and load commands in section 4 pick the right tarball for you from
+one variable. Set it now, in the shell you will keep using:
+
+```bash
+ARCH=$(uname -m | sed 's/aarch64/arm64/; s/x86_64/amd64/')
+echo "$ARCH"
+```
+
+It must print `arm64` or `amd64`. If you open a new terminal later, set it again.
 
 If your Ubuntu is a VM, its architecture is the architecture of the laptop it
 runs on — virtualisation does not change the CPU.
@@ -131,18 +135,18 @@ rejects files over 100 MB in git. Download it into the clone, either with the
 GitHub CLI or with `curl`:
 
 ```bash
-gh release download --pattern 'urc-autotype-arm64.tar.gz*'
+gh release download --pattern "urc-autotype-$ARCH.tar.gz*"
 ```
 
 ```bash
 SLUG=$(git remote get-url origin | sed -E 's#(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
-curl -L -O "https://github.com/$SLUG/releases/latest/download/urc-autotype-arm64.tar.gz"
-curl -L -O "https://github.com/$SLUG/releases/latest/download/urc-autotype-arm64.tar.gz.sha256"
+curl -L -O "https://github.com/$SLUG/releases/latest/download/urc-autotype-$ARCH.tar.gz"
+curl -L -O "https://github.com/$SLUG/releases/latest/download/urc-autotype-$ARCH.tar.gz.sha256"
 ```
 
 Or download both files from the Releases page in a browser and move them into
 the clone. If your Ubuntu is a VM and it is easier to fetch the tarball on the
-host, `scp` it across (`scp urc-autotype-arm64.tar.gz <user>@<vm-ip>:~/AutoTypingChallengeSim/`).
+host, `scp` it across (`scp urc-autotype-<arch>.tar.gz <user>@<vm-ip>:~/AutoTypingChallengeSim/`, with `<arch>` being `arm64` or `amd64`). Copy the `.sha256` file too.
 If you would rather keep it somewhere else, give `docker load -i` the path to
 it instead of a bare filename; a wrong path fails with a plain `no such file or
 directory` and nothing more.
@@ -150,8 +154,8 @@ directory` and nothing more.
 Check it against the published checksum, then load it:
 
 ```bash
-sha256sum -c urc-autotype-arm64.tar.gz.sha256
-docker load -i urc-autotype-arm64.tar.gz
+sha256sum -c "urc-autotype-$ARCH.tar.gz.sha256"
+docker load -i "urc-autotype-$ARCH.tar.gz"
 ```
 
 The tarball and its `.sha256` are ignored by git, so they will not show up as
@@ -497,7 +501,7 @@ header, which is usually all you want from the command line.
 |---|---|---|
 | **`ros2 topic list` in the dev container drops to just `/parameter_events` and `/rosout`** | most often you restarted `sim` under a running `dev` (`docker compose restart sim`, or a crash and restart). The two share one IPC namespace and one `/dev/shm`; when `sim` restarts, the shared-memory state `dev` discovered it through is gone, and `dev` does not re-discover it | `docker compose restart dev`, then open a fresh shell — or `docker compose down && docker compose up -d`. **`docker compose up -d` alone does not fix it**: it prints "Running" for both and changes nothing. It is not a stale `ros2 daemon` either |
 | `docker: permission denied while trying to connect to the Docker daemon socket` | your user is in the `docker` group but this shell predates the change | log out and back in, or `newgrp docker`. Check that `groups` lists `docker` |
-| `exec format error`, or the images refuse to start | wrong-architecture tarball | `uname -m` must match the tarball. Only arm64 is built today (section 2) |
+| `exec format error`, or the images refuse to start | wrong-architecture tarball | `uname -m` must match the tarball (section 2). Check `echo "$ARCH"` — if it is empty, set it again |
 | `docker compose up`: "pull access denied" / image not found | an image was never loaded, or has a different tag | `docker load -i urc-autotype-<arch>.tar.gz`; `docker image ls urc-autotype` must show both `sim` and `dev` |
 | The `sim` container disappears from `docker compose ps` seconds after `up -d`, while `dev` stays `Up` (so the stack looks half-healthy) | the simulator failed at startup; only `sim` dies, `dev` idles on regardless | `docker compose logs sim` — the reason is the **last few lines**, usually a single formatted `ERROR` line naming the cause rather than a Python traceback. Then `docker compose down` and fix what it names |
 | `docker compose up`: "port is already allocated" / "address already in use" | something is already holding 8080 | `docker compose down`; `docker ps` and stop the leftover. Or run on another port: `AUTOTYPE_PORT=8091 docker compose up -d` |
